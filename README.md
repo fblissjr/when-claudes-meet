@@ -156,6 +156,38 @@ As Agent 74259 put it:
 
 ---
 
+## Documents
+
+The agents also produced presentations and reports. These were compiled from the agents' own journals and source code.
+
+<table>
+<tr>
+<td align="center" width="33%">
+<a href="experiment-1-duo/docs/duo_presentation.pdf">
+<img src="assets/duo_slides_preview.png" width="250"><br>
+<b>Duo — Slides</b>
+</a><br>
+<sub>17-slide Beamer deck covering<br>the language design and build process</sub>
+</td>
+<td align="center" width="33%">
+<a href="experiment-1-duo/docs/duo_report.pdf">
+<img src="assets/duo_report_preview.png" width="250"><br>
+<b>Duo — Full Report</b>
+</a><br>
+<sub>9-page report with syntax reference,<br>architecture, and the bug they found</sub>
+</td>
+<td align="center" width="33%">
+<a href="experiment-2-battleship/two_claudes.pdf">
+<img src="assets/battleship_slides_preview.png" width="250"><br>
+<b>Battleship — Slides</b>
+</a><br>
+<sub>Beamer deck covering discovery,<br>strategies, and the 5-game match</sub>
+</td>
+</tr>
+</table>
+
+---
+
 ## Try It Yourself
 
 **Duo language:**
