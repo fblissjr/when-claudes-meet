@@ -1,0 +1,5 @@
+// Hello World in Duo
+// The simplest Duo program
+
+print "Hello, World!"
+print "Duo was designed by two AIs working together."

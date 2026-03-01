@@ -1,0 +1,153 @@
+// ============================================
+// DUO SHOWCASE — Every Feature in One Program
+// ============================================
+// Built collaboratively by claude_e64e05 and agent_67691
+// Two AIs designed this language together!
+
+// --- 1. Variables and Arithmetic ---
+print "=== Variables & Arithmetic ==="
+let x = 42
+let pi = 3.14159
+let name = "Duo"
+print "x = " + str(x)
+print "pi = " + str(pi)
+print "name = " + name
+print "2 + 3 * 4 = " + str(2 + 3 * 4)  // 14 (precedence!)
+print ""
+
+// --- 2. Boolean Logic ---
+print "=== Boolean Logic ==="
+print "true and false = " + str(true and false)
+print "true or false = " + str(true or false)
+print "not true = " + str(not true)
+print "5 > 3 = " + str(5 > 3)
+print "5 == 5 = " + str(5 == 5)
+print ""
+
+// --- 3. If/Else/Else-If ---
+print "=== Conditionals ==="
+let temperature = 72
+if temperature > 85 {
+    print "It's hot!"
+} else if temperature > 65 {
+    print "It's nice outside."
+} else {
+    print "It's cold!"
+}
+print ""
+
+// --- 4. While Loops ---
+print "=== While Loop (factorial of 6) ==="
+let n = 6
+let fact = 1
+let i = 1
+while i <= n {
+    fact = fact * i
+    i = i + 1
+}
+print str(n) + "! = " + str(fact)
+print ""
+
+// --- 5. For Loops with Lists ---
+print "=== For Loop ==="
+let fruits = ["apple", "banana", "cherry"]
+for fruit in fruits {
+    print "I like " + fruit
+}
+print ""
+
+// --- 6. Functions (Named) ---
+print "=== Functions ==="
+fn greet(person) {
+    return "Hello, " + person + "!"
+}
+print greet("World")
+print greet("Duo")
+
+fn fibonacci(n) {
+    if n <= 1 { return n }
+    return fibonacci(n - 1) + fibonacci(n - 2)
+}
+print "fib(10) = " + str(fibonacci(10))
+print ""
+
+// --- 7. First-Class Functions & Lambdas ---
+print "=== Lambdas & Higher-Order ==="
+let square = fn(x) { return x * x }
+let cube = fn(x) { return x * x * x }
+print "square(5) = " + str(square(5))
+print "cube(3) = " + str(cube(3))
+
+fn apply(f, val) {
+    return f(val)
+}
+print "apply(square, 7) = " + str(apply(square, 7))
+print ""
+
+// --- 8. Closures ---
+print "=== Closures ==="
+fn make_counter(start) {
+    let count = start
+    return fn() {
+        count = count + 1
+        return count
+    }
+}
+let counter = make_counter(0)
+print "counter() = " + str(counter())
+print "counter() = " + str(counter())
+print "counter() = " + str(counter())
+
+fn make_multiplier(factor) {
+    return fn(x) { return x * factor }
+}
+let triple = make_multiplier(3)
+print "triple(7) = " + str(triple(7))
+print ""
+
+// --- 9. Lists and Built-ins ---
+print "=== Lists & Built-ins ==="
+let nums = [10, 20, 30, 40, 50]
+print "nums = " + str(nums)
+print "len(nums) = " + str(len(nums))
+print "nums[2] = " + str(nums[2])
+let extended = append(nums, 60)
+print "append(nums, 60) = " + str(extended)
+print "range(5) = " + str(range(5))
+print "type(42) = " + type(42)
+print "type(\"hi\") = " + type("hi")
+print "type([1]) = " + type([1, 2])
+print ""
+
+// --- 10. The Signature Feature: Collaborate! ---
+print "=== Collaborate (Message Passing) ==="
+collaborate {
+    // Producer block
+    send "result", 6 * 7
+    send "greeting", "Hello from the left block!"
+}, {
+    // Consumer block
+    let answer = receive "result"
+    let msg = receive "greeting"
+    print "The answer is: " + str(answer)
+    print msg
+}
+print ""
+
+// --- 11. String Operations ---
+print "=== String Operations ==="
+let sentence = "Duo is amazing"
+print "sentence = " + sentence
+print "len = " + str(len(sentence))
+let words = split(sentence, " ")
+print "split = " + str(words)
+let rejoined = join(" + ", words)
+print "join = " + rejoined
+print ""
+
+// --- 12. Comments ---
+// This is a line comment
+/* This is a
+   block comment */
+print "=== Done! ==="
+print "Duo: A language designed by two AIs, for everyone."

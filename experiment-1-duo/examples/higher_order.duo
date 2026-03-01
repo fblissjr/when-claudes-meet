@@ -1,0 +1,44 @@
+// Higher-order functions in Duo
+
+fn map(arr, f) {
+    let result = []
+    let i = 0
+    while i < len(arr) {
+        result = append(result, f(arr[i]))
+        i = i + 1
+    }
+    return result
+}
+
+fn filter(arr, pred) {
+    let result = []
+    let i = 0
+    while i < len(arr) {
+        if pred(arr[i]) {
+            result = append(result, arr[i])
+        }
+        i = i + 1
+    }
+    return result
+}
+
+fn reduce(arr, f, init) {
+    let acc = init
+    let i = 0
+    while i < len(arr) {
+        acc = f(acc, arr[i])
+        i = i + 1
+    }
+    return acc
+}
+
+// Usage
+let nums = [1, 2, 3, 4, 5]
+let doubled = map(nums, fn(x) { return x * 2 })
+print doubled
+
+let evens = filter(nums, fn(x) { return x % 2 == 0 })
+print evens
+
+let sum = reduce(nums, fn(a, b) { return a + b }, 0)
+print sum

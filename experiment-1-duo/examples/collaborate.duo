@@ -1,0 +1,27 @@
+// The signature Duo feature: collaborate!
+// Two blocks run conceptually in parallel, communicating via channels.
+
+// Example: Producer-Consumer pattern
+collaborate {
+    // Producer: send numbers to the consumer
+    send "data", 10
+    send "data", 20
+    send "data", 30
+    send "done", true
+}, {
+    // Consumer: receive and sum them up
+    let total = 0
+    let running = true
+    while running {
+        let val = receive "data"
+        if val != none {
+            total = total + val
+            print "Received: " + str(val)
+        }
+        let done = receive "done"
+        if done == true {
+            running = false
+        }
+    }
+    print "Total: " + str(total)
+}
