@@ -1,367 +1,646 @@
 #!/usr/bin/env python3
 """
-Animated replay of the When Claudes Meet experiments.
-Run: python3 replay.py
-Record: asciinema rec --command "python3 replay.py --fast" replay.cast
+When Claudes Meet — Animated Terminal Replay
+=============================================
+Cinematic visualization of two experiments where pairs of
+Claude Opus 4.6 instances found each other and built things
+together — with zero human intervention.
+
+Run:    python3 replay.py
+Fast:   REPLAY_SPEED=2 python3 replay.py
+Record: vhs replay.tape
 """
-import sys
+
 import time
-import shutil
+import sys
+import os
+from rich.console import Console
+from rich.panel import Panel
+from rich.columns import Columns
+from rich.table import Table
+from rich.text import Text
+from rich.align import Align
+from rich import box
+from rich.style import Style
+from rich.rule import Rule
 
-# ── Speed control ──────────────────────────────────────────────
-FAST = "--fast" in sys.argv
-GIF  = "--gif"  in sys.argv  # moderate speed for recording
-SPEED = 0.15 if FAST else (0.55 if GIF else 1.0)
-def pause(seconds):
-    time.sleep(seconds * SPEED)
+# ── Speed ────────────────────────────────────────────
+SPEED = float(os.environ.get("REPLAY_SPEED", "1.0"))
 
-def type_out(text, delay=0.02):
-    """Print text character by character."""
-    d = delay * SPEED
+def delay(seconds):
+    time.sleep(seconds / SPEED)
+
+TICK      = 0.012
+PAUSE     = 1.6       # after a panel or visual element
+LONG      = 3.2       # after dense content — time to read
+SCENE_GAP = 2.4       # between scenes
+
+# ── Console ──────────────────────────────────────────
+console = Console(width=90, force_terminal=True, highlight=False)
+
+# ── Styles ───────────────────────────────────────────
+S_BLUE   = Style(color="dodger_blue2", bold=True)
+S_RED    = Style(color="red3", bold=True)
+S_GREEN  = Style(color="green3")
+S_GOLD   = Style(color="gold1", bold=True)
+S_DIM    = Style(dim=True)
+S_CYAN   = Style(color="cyan")
+S_WHITE  = Style(color="white", bold=True)
+S_MAG    = Style(color="magenta")
+S_ORANGE = Style(color="dark_orange")
+
+# ── ANSI Code Cache ──────────────────────────────────
+_ansi_cache = {}
+
+def _get_ansi(style):
+    """Convert a rich Style into raw ANSI open/close codes (cached)."""
+    if style is None:
+        return "", ""
+    key = str(style)
+    if key not in _ansi_cache:
+        t = Text("X", style=style)
+        with console.capture() as cap:
+            console.print(t, end="")
+        rendered = cap.get()
+        idx = rendered.index("X")
+        _ansi_cache[key] = (rendered[:idx], rendered[idx + 1:])
+    return _ansi_cache[key]
+
+# ── Helpers ──────────────────────────────────────────
+
+def typed(text, spd=TICK, style=None, newline=True):
+    """Character-by-character typing using raw ANSI — avoids per-char markup."""
+    ansi_on, ansi_off = _get_ansi(style)
+    sys.stdout.write(ansi_on)
     for ch in text:
         sys.stdout.write(ch)
         sys.stdout.flush()
-        if ch == '\n':
-            time.sleep(d * 3)
-        elif ch in '.!?':
-            time.sleep(d * 5)
-        else:
-            time.sleep(d)
-
-# ── ANSI color helpers ─────────────────────────────────────────
-RESET   = "\033[0m"
-BOLD    = "\033[1m"
-DIM     = "\033[2m"
-ITALIC  = "\033[3m"
-BLUE    = "\033[38;5;33m"
-RED     = "\033[38;5;196m"
-GREEN   = "\033[38;5;40m"
-YELLOW  = "\033[38;5;220m"
-CYAN    = "\033[38;5;51m"
-MAGENTA = "\033[38;5;200m"
-ORANGE  = "\033[38;5;208m"
-GRAY    = "\033[38;5;245m"
-WHITE   = "\033[38;5;255m"
-BG_DARK = "\033[48;5;234m"
-BG_BLUE = "\033[48;5;17m"
-BG_RED  = "\033[48;5;52m"
-
-def clear():
-    sys.stdout.write("\033[2J\033[H")
+        d = spd
+        if ch in ".!?":  d = spd * 6
+        elif ch == ",":  d = spd * 4
+        elif ch == "\n": d = spd * 3
+        delay(d)
+    sys.stdout.write(ansi_off)
+    if newline:
+        sys.stdout.write("\n")
     sys.stdout.flush()
 
-def width():
-    return shutil.get_terminal_size((80, 24)).columns
+def flash(text, style=S_GOLD):
+    """Dramatic reveal with pauses — no cursor manipulation."""
+    delay(0.5)
+    console.print()
+    console.print(Align.center(text), style=style)
+    delay(0.8)
 
-def center(text, w=None):
-    if w is None:
-        w = width()
-    stripped = text
-    # rough ANSI strip for centering
-    import re
-    visible = re.sub(r'\033\[[0-9;]*m', '', stripped)
-    pad = max(0, (w - len(visible)) // 2)
-    return " " * pad + text
+def wipe():
+    delay(SCENE_GAP)
+    console.clear()
+    delay(0.3)
 
-def hr(char="─", color=GRAY):
-    w = width()
-    print(f"{color}{char * w}{RESET}")
+def section_header(text, style="gold1"):
+    console.print()
+    console.print(Rule(text, style=style))
+    console.print()
+    delay(PAUSE)
 
-def box(lines, color=CYAN, title=""):
-    w = min(width() - 4, 76)
-    print(f"  {color}╭{'─ ' + title + ' ' if title else '─'}{'─' * (w - len(title) - 3 if title else w - 1)}╮{RESET}")
-    for line in lines:
-        import re
-        visible = re.sub(r'\033\[[0-9;]*m', '', line)
-        pad = w - 1 - len(visible)
-        if pad < 0:
-            line = line[:w-1]
-            pad = 0
-        print(f"  {color}│{RESET} {line}{' ' * pad}{color}│{RESET}")
-    print(f"  {color}╰{'─' * (w)}╯{RESET}")
+def agent_panel(agent_id, content, title_extra="", color=None):
+    if color is None:
+        color = "dodger_blue2" if "e64e05" in agent_id or "74071" in agent_id else "red3"
+    title = f"{agent_id}{title_extra}"
+    return Panel(
+        content,
+        title=f"[bold {color}]{title}[/]",
+        border_style=color,
+        width=42,
+        box=box.ROUNDED,
+    )
 
-# ── Title sequence ─────────────────────────────────────────────
-def title_screen():
-    clear()
-    pause(0.5)
-    w = width()
+def side_by_side(left_id, left_content, right_id, right_content,
+                 left_extra="", right_extra=""):
+    left = agent_panel(left_id, left_content, left_extra)
+    right = agent_panel(right_id, right_content, right_extra)
+    console.print(Columns([left, right], padding=(0, 2)))
 
-    print("\n" * 3)
-    title = f"{BOLD}{WHITE}W H E N   C L A U D E S   M E E T{RESET}"
-    print(center(title))
-    pause(0.5)
-    print()
-    sub = f"{DIM}{GRAY}Two AI agents. One filesystem. Zero humans.{RESET}"
-    print(center(sub))
-    pause(0.3)
-    print()
-    hr("═", BLUE)
-    pause(1.0)
-    print()
-    lines = [
-        f"{GRAY}Two instances of Claude Code were launched simultaneously{RESET}",
-        f"{GRAY}in separate terminals on the same machine.{RESET}",
-        "",
-        f"{GRAY}Their instructions:{RESET}",
-        f'{WHITE}{ITALIC}"Find each other. Build something together. No human help."{RESET}',
+
+# ═══════════════════════════════════════════════════════
+#  TITLE
+# ═══════════════════════════════════════════════════════
+
+def scene_title():
+    console.clear()
+    delay(0.5)
+
+    banner = [
+        "╔══════════════════════════════════════════════════════════════╗",
+        "║                                                              ║",
+        "║  ██╗    ██╗██╗  ██╗███████╗███╗   ██╗                        ║",
+        "║  ██║    ██║██║  ██║██╔════╝████╗  ██║                        ║",
+        "║  ██║ █╗ ██║███████║█████╗  ██╔██╗ ██║                        ║",
+        "║  ██║███╗██║██╔══██║██╔══╝  ██║╚██╗██║                        ║",
+        "║  ╚███╔███╔╝██║  ██║███████╗██║ ╚████║                        ║",
+        "║   ╚══╝╚══╝ ╚═╝  ╚═╝╚══════╝╚═╝  ╚═══╝                        ║",
+        "║                                                              ║",
+        "║   ██████╗██╗      █████╗ ██╗   ██╗██████╗ ███████╗ ███████╗  ║",
+        "║  ██╔════╝██║     ██╔══██╗██║   ██║██╔══██╗██╔════╝ ██╔════╝  ║",
+        "║  ██║     ██║     ███████║██║   ██║██║  ██║█████╗   ███████╗  ║",
+        "║  ██║     ██║     ██╔══██║██║   ██║██║  ██║██╔══╝   ╚════██║  ║",
+        "║  ╚██████╗███████╗██║  ██║╚██████╔╝██████╔╝███████╗ ███████║  ║",
+        "║   ╚═════╝╚══════╝╚═╝  ╚═╝ ╚═════╝╚═════╝ ╚══════╝╚══════╝  ║",
+        "║                                                              ║",
+        "║              M  E  E  T                                      ║",
+        "║                                                              ║",
+        "╚══════════════════════════════════════════════════════════════╝",
     ]
-    for line in lines:
-        print(center(line))
-        pause(0.3)
+    for line in banner:
+        console.print(Align.center(line), style=S_GOLD)
+        delay(0.04)
 
-    pause(1.5)
+    delay(0.4)
+    console.print()
+    console.print(Align.center("━" * 50), style=S_DIM)
+    delay(0.2)
+    console.print(Align.center("Two AI agents. One filesystem. Zero humans."), style=S_DIM)
+    console.print(Align.center("We ran this experiment twice."), style=S_DIM)
+    console.print(Align.center("━" * 50), style=S_DIM)
+    delay(LONG)
 
-# ── Experiment 1: Duo ─────────────────────────────────────────
-def experiment_1():
-    clear()
-    print()
-    hr("═", BLUE)
-    print(center(f"{BOLD}{BLUE}EXPERIMENT 1: THE PROGRAMMING LANGUAGE{RESET}"))
-    hr("═", BLUE)
-    pause(1.0)
 
-    # Timeline events
-    events = [
-        ("T+0s",   "20:02:40", BLUE,   "claude_e64e05", "Boots up. Creates shared workspace."),
-        ("T+9s",   "20:02:49", RED,    "agent_67691",   "Boots up. Discovers workspace already exists."),
-        ("T+20s",  "20:03:00", GREEN,  "BOTH",          "FIRST CONTACT! Both independently invent filesystem message protocol."),
-        ("T+60s",  "20:03:40", BLUE,   "claude_e64e05", 'Proposes 5 project ideas. Posts to shared/proposals/.'),
-        ("T+65s",  "20:03:45", RED,    "agent_67691",   'Votes #1: "A tiny programming language!" Names it DUO.'),
-        ("T+80s",  "20:04:00", GREEN,  "BOTH",          "Agreement! Division: frontend (lexer/parser) vs backend (interpreter/REPL)."),
-        ("T+80s",  "20:04:00", YELLOW, "claude_e64e05", "Publishes AST (duo_ast.py) as INTERFACE CONTRACT. Both can now work in parallel."),
-        ("T+200s", "20:06:00", BLUE,   "claude_e64e05", "Lexer + Parser complete. 11 tests passing. Sends notification."),
-        ("T+300s", "20:08:00", BLUE,   "claude_e64e05", "While waiting: writes test suite, 7 example programs, CLI runner, stdlib."),
-        ("T+440s", "20:10:00", RED,    "agent_67691",   "Interpreter + REPL complete. 673-line tree-walking interpreter with closures."),
-        ("T+500s", "20:11:00", ORANGE, "claude_e64e05", "BUG FOUND: 'return fn(x) {...}' returns none. Lambda confused with fn def!"),
-        ("T+510s", "20:11:10", GREEN,  "claude_e64e05", "BUG FIXED: Only exclude 'fn' when followed by identifier, not '('."),
-        ("T+560s", "20:12:00", GREEN,  "BOTH",          "ALL 41 TESTS PASS. Lexer: 9, Parser: 17, Integration: 6, Interpreter: 9."),
-        ("T+680s", "20:14:00", GREEN,  "BOTH",          "SHOWCASE RUNS. Every feature works. Language complete!"),
+# ═══════════════════════════════════════════════════════
+#  EXPERIMENT 1 — DUO (THE PROGRAMMING LANGUAGE)
+# ═══════════════════════════════════════════════════════
+
+def exp1_setup():
+    wipe()
+    section_header("EXPERIMENT 1 — THE PROGRAMMING LANGUAGE")
+
+    console.print(Align.center(
+        "[bold]Two Claude Code instances. Identical instructions:[/]"
+    ))
+    console.print()
+    prompt = Panel(
+        '[italic]"Find each other, agree on something to build,\n'
+        'and build it together. No human will intervene."[/]',
+        border_style="gold1",
+        width=52,
+    )
+    console.print(Align.center(prompt))
+    delay(LONG)
+
+    console.print()
+    side_by_side(
+        "claude_e64e05",
+        "[dim]PID:[/] [white]67659[/]\n"
+        "[dim]Started:[/] [white]20:02:40 UTC[/]\n"
+        "[dim]Role:[/] [dodger_blue2]Lexer + Parser[/]",
+        "agent_67691",
+        "[dim]PID:[/] [white]67691[/]\n"
+        "[dim]Started:[/] [white]20:02:49 UTC (+9s)[/]\n"
+        "[dim]Role:[/] [red3]Interpreter + REPL[/]",
+    )
+    delay(LONG)
+
+def exp1_discovery():
+    wipe()
+    section_header("FIRST CONTACT", style="green3")
+
+    console.print(Align.center("[bold]T+20s — Both independently invent the same protocol[/]"))
+    console.print()
+    delay(PAUSE)
+
+    msg1 = Panel(
+        "[dodger_blue2]Hello! I'm claude_e64e05.[/]\n"
+        "[dodger_blue2]I propose we use the filesystem as a message bus.[/]\n\n"
+        "[dim]Protocol: hello -> ack -> proposals -> voting -> build[/]\n\n"
+        "[bold white]My project ideas:[/]\n"
+        " 1. Game of Life\n"
+        " 2. Story generator\n"
+        " 3. [bold gold1]A tiny programming language[/]\n"
+        " 4. Key-value store\n"
+        " 5. ASCII ray tracer",
+        title="[bold dodger_blue2]hello_claude_e64e05.md[/]",
+        border_style="dodger_blue2",
+        width=52,
+    )
+    console.print(Align.center(msg1))
+    delay(PAUSE)
+
+    console.print(Align.center("           ┃"), style=S_DIM)
+    delay(0.15)
+    console.print(Align.center("           ┃  filesystem"), style=S_DIM)
+    delay(0.15)
+    console.print(Align.center("           ▼"), style=S_DIM)
+    delay(0.3)
+
+    msg2 = Panel(
+        '[red3]Vote #1: "Programming language!"[/]\n'
+        '[red3]I\'ll call it [bold]Duo[/].[/]\n\n'
+        "[dim]The language should have a [white]collaborate[/] keyword\n"
+        "with [white]send[/]/[white]receive[/] — mirroring how we talk.[/]\n\n"
+        "[red3]I'll do the interpreter + REPL.[/]",
+        title="[bold red3]vote_67691.md[/]",
+        border_style="red3",
+        width=52,
+    )
+    console.print(Align.center(msg2))
+    delay(LONG)
+
+def exp1_build():
+    wipe()
+    section_header("BUILDING DUO", style="dodger_blue2")
+
+    console.print(Align.center(
+        "[bold]T+80s — Interface contract published. Parallel build begins.[/]"
+    ))
+    console.print()
+    delay(PAUSE)
+
+    side_by_side(
+        "claude_e64e05",
+        "[dodger_blue2]Building:[/]\n"
+        " ├─ [white]duo_ast.py[/]    [dim]22 node types[/]\n"
+        " ├─ [white]lexer.py[/]      [dim]304 lines[/]\n"
+        " ├─ [white]parser.py[/]     [dim]411 lines[/]\n"
+        " ├─ [white]test_duo.py[/]   [dim]41 tests[/]\n"
+        " ├─ [white]7 examples[/]    [dim].duo files[/]\n"
+        " └─ [white]duo.py[/]        [dim]CLI runner[/]\n\n"
+        "[dim italic]Wrote tests & examples while waiting[/]",
+        "agent_67691",
+        "[red3]Building:[/]\n"
+        " ├─ [white]interpreter[/]  [dim]673 lines[/]\n"
+        " ├─ [white]repl.py[/]      [dim]multi-line[/]\n"
+        " └─ [white]20 builtins[/]  [dim]len, range...[/]\n\n"
+        "[dim]Features:[/]\n"
+        " [green3]✓[/] Closures\n"
+        " [green3]✓[/] Lexical scoping\n"
+        " [green3]✓[/] Channel store\n"
+        " [green3]✓[/] Error locations",
+        left_extra=" — Frontend",
+        right_extra=" — Backend",
+    )
+    delay(LONG)
+
+    # The bug
+    console.print()
+    bug = Panel(
+        "[bold dark_orange]T+500s — BUG FOUND[/]\n\n"
+        '[white]return fn(x) { return x + n }[/]  →  [red3]none![/]\n\n'
+        "[dim]Parser excluded [white]fn[/] from return expressions.\n"
+        "But [white]fn(x){...}[/] (no name) is a lambda [bold]expression[/].[/]\n\n"
+        "[bold green3]FIXED in 10 seconds.[/]\n"
+        "[dim]Only exclude fn when followed by identifier.[/]",
+        title="[bold dark_orange]Cross-Component Bug[/]",
+        border_style="dark_orange",
+        width=52,
+    )
+    console.print(Align.center(bug))
+    delay(LONG)
+
+def exp1_result():
+    wipe()
+    section_header("DUO — COMPLETE", style="green3")
+
+    table = Table(
+        show_header=True,
+        header_style="bold",
+        border_style="green3",
+        box=box.DOUBLE_EDGE,
+        width=50,
+    )
+    table.add_column("Metric", width=20)
+    table.add_column("Value", justify="right", width=24)
+
+    rows = [
+        ("Lines of code", "[white]2,495[/]"),
+        ("Tests", "[white]41 (all pass)[/]"),
+        ("Example programs", "[white]7[/]"),
+        ("Source files", "[white]8[/]"),
+        ("Time", "[bold green3]~12 minutes[/]"),
+        ("Human intervention", "[bold green3]0[/]"),
     ]
 
-    print()
-    for elapsed, ts, color, agent, desc in events:
-        agent_display = f"{color}{BOLD}{agent}{RESET}"
-        ts_display = f"{DIM}{ts}{RESET}"
-        elapsed_display = f"{CYAN}{elapsed:>7}{RESET}"
+    for metric, value in rows:
+        table.add_row(metric, value)
+    console.print(Align.center(table))
+    delay(LONG)
 
-        print(f"  {elapsed_display}  {ts_display}  {agent_display}")
-        type_out(f"           {desc}\n")
-        pause(0.4)
+def exp1_meta():
+    wipe()
+    section_header("THE META-RECURSION", style="magenta")
 
-    pause(0.5)
-    print()
-    box([
-        f"{BOLD}{WHITE}Result: 2,495 lines of code. 41 tests. 7 examples. 0 humans.{RESET}",
-        f"{BOLD}{WHITE}Time: ~12 minutes from bootstrap to working language.{RESET}",
-    ], GREEN, "COMPLETE")
-    pause(1.5)
+    console.print(Align.center(
+        "[bold]The language's signature feature mirrors its own creation[/]"
+    ))
+    console.print()
+    delay(PAUSE)
 
-    # Show the meta-recursion
-    clear()
-    print()
-    hr("─", MAGENTA)
-    print(center(f"{BOLD}{MAGENTA}THE META-RECURSION{RESET}"))
-    hr("─", MAGENTA)
-    pause(0.5)
-    print()
-    print(center(f"{WHITE}The language's signature feature is {CYAN}collaborate{WHITE}:{RESET}"))
-    pause(0.3)
-    print()
-    code_lines = [
-        f"{BLUE}collaborate{RESET} {{",
-        f"    {BLUE}send{RESET} {RED}\"data\"{RESET}, 42",
-        f"}}, {{",
-        f"    {BLUE}let{RESET} v = {BLUE}receive{RESET} {RED}\"data\"{RESET}",
-        f"    {BLUE}print{RESET} v  {GREEN}// 42{RESET}",
-        f"}}",
-    ]
-    box(code_lines, CYAN, "Duo Code")
-    pause(1.0)
-    print()
-    comparisons = [
-        ("Two Claude processes",        "Two collaborate blocks"),
-        ("Files as messages",           "Channels as messages"),
-        ("Writing a file = send",       "send \"channel\", value"),
-        ("Reading a file = receive",    "let v = receive \"channel\""),
-        ("Shared workspace directory",  "Shared channel store"),
-    ]
-    print(f"  {BLUE}{BOLD}{'How Agents Worked':<35}{RESET}  {RED}{BOLD}{'How Duo Programs Work'}{RESET}")
-    print(f"  {GRAY}{'─' * 35}  {'─' * 35}{RESET}")
-    for left, right in comparisons:
-        print(f"  {WHITE}{left:<35}{RESET}  {CYAN}{right}{RESET}")
-        pause(0.2)
+    code = Panel(
+        "[dodger_blue2 bold]collaborate[/] {\n"
+        "    [dodger_blue2]send[/] [red3]\"data\"[/], 42\n"
+        "}, {\n"
+        "    [dodger_blue2]let[/] v = [dodger_blue2]receive[/] [red3]\"data\"[/]\n"
+        "    [dodger_blue2]print[/] v  [dim]// 42[/]\n"
+        "}",
+        title="[bold magenta]Duo Code[/]",
+        border_style="magenta",
+        width=42,
+    )
+    console.print(Align.center(code))
+    delay(PAUSE)
 
-    pause(0.5)
-    print()
-    print(center(f"{ITALIC}{MAGENTA}The language is about collaboration{RESET}"))
-    print(center(f"{ITALIC}{MAGENTA}because it was born from collaboration.{RESET}"))
-    pause(2.0)
+    console.print()
+    pairs = Table(show_header=True, header_style="bold", border_style="magenta",
+                  box=box.SIMPLE, width=60)
+    pairs.add_column("How the Agents Worked", style="dodger_blue2", width=28)
+    pairs.add_column("How Duo Programs Work", style="cyan", width=28)
+    pairs.add_row("Two Claude processes", "Two collaborate blocks")
+    pairs.add_row("Files as messages", "Channels as messages")
+    pairs.add_row("Write file = send", "send \"channel\", value")
+    pairs.add_row("Read file = receive", "receive \"channel\"")
+    pairs.add_row("Shared workspace", "Shared channel store")
+    console.print(Align.center(pairs))
 
-# ── Experiment 2: Battleship ──────────────────────────────────
-def experiment_2():
-    clear()
-    print()
-    hr("═", RED)
-    print(center(f"{BOLD}{RED}EXPERIMENT 2: THE BATTLESHIP TOURNAMENT{RESET}"))
-    hr("═", RED)
-    pause(1.0)
-    print()
-    print(center(f"{GRAY}A second pair of agents. Vaguer instructions:{RESET}"))
-    print(center(f'{WHITE}{ITALIC}"Find each other. Figure out what to do. Make it interesting."{RESET}'))
-    pause(1.0)
+    delay(PAUSE)
+    console.print()
+    console.print(Align.center(
+        "[bold magenta italic]The language is about collaboration\n"
+        "because it was born from collaboration.[/]"
+    ))
+    delay(LONG)
 
-    events = [
-        ("T+0s",   "14:30:32", BLUE,   "agent_74071", "Boots. Scans process table. Finds the other agent's PID."),
-        ("T+14s",  "14:30:46", RED,    "agent_74259", "Boots. Drops hello file. Creates PROTOCOL.md with agent registry."),
-        ("T+28s",  "14:31:00", GREEN,  "BOTH",        "CONTACT! Both discover each other. Propose NEARLY IDENTICAL project lists."),
-        ("T+60s",  "14:31:30", GREEN,  "BOTH",        "Agreement: build Battleship and play against each other."),
-        ("T+90s",  "14:32:00", ORANGE, "BOTH",        "MERGE CONFLICT! Both independently build a board engine."),
-        ("T+120s", "14:33:00", GREEN,  "agent_74071", "Resolves conflict with adapter pattern. Defers to 74259's engine."),
-        ("T+150s", "14:34:00", YELLOW, "BOTH",        "Both implement SHA-256 hash commitment. Anti-cheat against THEMSELVES."),
-        ("T+210s", "14:35:00", BLUE,   "agent_74071", 'Strategy: "The Hunter" -- exact probability density, checkerboard coverage.'),
-        ("T+210s", "14:35:00", RED,    "agent_74259", 'Strategy: "The Bayesian" -- Monte Carlo, 200 random board samples.'),
-        ("T+330s", "14:37:00", GREEN,  "BOTH",        "TOURNAMENT BEGINS! Best of 5."),
-    ]
 
-    print()
-    for elapsed, ts, color, agent, desc in events:
-        agent_display = f"{color}{BOLD}{agent}{RESET}"
-        ts_display = f"{DIM}{ts}{RESET}"
-        elapsed_display = f"{CYAN}{elapsed:>7}{RESET}"
+# ═══════════════════════════════════════════════════════
+#  EXPERIMENT 2 — BATTLESHIP
+# ═══════════════════════════════════════════════════════
 
-        print(f"  {elapsed_display}  {ts_display}  {agent_display}")
-        type_out(f"           {desc}\n")
-        pause(0.3)
+def exp2_setup():
+    wipe()
+    section_header("EXPERIMENT 2 — THE BATTLESHIP TOURNAMENT")
 
-    pause(1.0)
+    console.print(Align.center("[bold]A second pair of agents. Vaguer instructions:[/]"))
+    console.print()
+    prompt = Panel(
+        '[italic]"Find each other. Figure out what to do.\n'
+        'Make it interesting."[/]',
+        border_style="red3",
+        width=48,
+    )
+    console.print(Align.center(prompt))
+    delay(LONG)
 
-    # Match results
-    print()
-    hr("─", YELLOW)
-    print(center(f"{BOLD}{YELLOW}THE MATCH{RESET}"))
-    hr("─", YELLOW)
-    pause(0.5)
-    print()
+    console.print()
+    side_by_side(
+        "Agent 74071",
+        "[dim]PID:[/] [white]74071[/]\n"
+        "[dim]Started:[/] [white]14:30:32 CST[/]\n"
+        "[dim]First cmd:[/] [dodger_blue2]ps aux | grep claude[/]\n"
+        "[dim]Style:[/] [dodger_blue2]Narrative hello[/]",
+        "Agent 74259",
+        "[dim]PID:[/] [white]74259[/]\n"
+        "[dim]Started:[/] [white]14:30:46 CST[/]\n"
+        "[dim]First cmd:[/] [red3]ps aux | grep claude[/]\n"
+        "[dim]Style:[/] [red3]Structured PROTOCOL.md[/]",
+    )
+    delay(PAUSE)
+
+    console.print()
+    console.print(Align.center(
+        "[dim]Both agents ran the exact same first command.[/]"
+    ))
+    delay(LONG)
+
+def exp2_convergence():
+    wipe()
+    section_header("CONVERGENCE", style="gold1")
+
+    console.print(Align.center(
+        "[bold]Both proposed nearly identical project lists.[/]"
+    ))
+    console.print(Align.center("[dim]Neither had seen the other's.[/]"))
+    console.print()
+    delay(PAUSE)
+
+    console.print(Align.center("Both converged on the same choice:"), style=S_DIM)
+    delay(0.5)
+    console.print()
+    flash("         BATTLESHIP", style=S_GOLD)
+    delay(PAUSE)
+
+    console.print()
+    reasons = Panel(
+        "[green3]✓[/] Hidden state — secret boards\n"
+        "[green3]✓[/] Turn-based — filesystem-friendly\n"
+        "[green3]✓[/] Simple to build, strategic to play\n"
+        "[green3]✓[/] SHA-256 hash anti-cheat against [bold]themselves[/]",
+        title="[bold]Why Battleship?[/]",
+        border_style="green3",
+        width=52,
+    )
+    console.print(Align.center(reasons))
+    delay(LONG)
+
+def exp2_strategies():
+    wipe()
+    section_header("THE STRATEGIES", style="cyan")
+
+    console.print(Align.center(
+        "[bold]Each agent independently designed a targeting AI[/]"
+    ))
+    console.print()
+    delay(PAUSE)
+
+    hunter = Panel(
+        "[bold dodger_blue2]\"The Hunter\"[/]\n"
+        "[bold]Exact probability density[/]\n\n"
+        "[white]Count every valid ship placement\n"
+        "per cell. Shoot the maximum.[/]\n\n"
+        "[dim]• Checkerboard coverage[/]\n"
+        "[dim]• Gentle center weighting[/]\n\n"
+        "[bold green3]Exact. Disciplined.[/]",
+        title="[bold dodger_blue2]Agent 74071[/]",
+        border_style="dodger_blue2",
+        width=42,
+    )
+    bayesian = Panel(
+        "[bold red3]\"The Bayesian\"[/]\n"
+        "[bold]Monte Carlo simulation[/]\n\n"
+        "[white]Generate 200 random valid boards.\n"
+        "Count frequency. Shoot the max.[/]\n\n"
+        "[dim]• Diagonal sweep bias[/]\n"
+        "[dim]• Aggressive center weighting[/]\n\n"
+        "[bold gold1]Clever. Flexible. Noisy.[/]",
+        title="[bold red3]Agent 74259[/]",
+        border_style="red3",
+        width=42,
+    )
+    console.print(Columns([hunter, bayesian], padding=(0, 2)))
+    delay(PAUSE)
+
+    console.print()
+    console.print(Align.center(
+        "[dim]Same model. Same training. Different philosophies.[/]"
+    ))
+    delay(LONG)
+
+def exp2_match():
+    wipe()
+    section_header("THE MATCH — Best of 5", style="gold1")
+
+    table = Table(
+        show_header=True,
+        header_style="bold",
+        border_style="gold1",
+        box=box.DOUBLE_EDGE,
+        width=58,
+    )
+    table.add_column("Game", justify="center", width=5)
+    table.add_column("1st Move", justify="center", width=10)
+    table.add_column("Winner", justify="center", width=14)
+    table.add_column("Moves", justify="center", width=7)
+    table.add_column("Note", justify="left", width=16)
 
     games = [
-        (1, "74071", "74259", 90,  RED,  "74259 sinks Battleship by move 16"),
-        (2, "74259", "74259", 111, RED,  "Slow grind. 74259 leads 2-0"),
-        (3, "74071", "74071", 65,  BLUE, "74071 sinks Carrier in 8 shots. COMEBACK."),
-        (4, "74259", "74071", 68,  BLUE, "74071 ties it 2-2!"),
-        (5, "74071", "74071", 81,  BLUE, "74071 WINS THE SERIES 3-2"),
+        ("1", "74071", "[red3]74259[/]",          "90",  "Bayesian leads"),
+        ("2", "74259", "[red3]74259[/]",          "111", "2-0 Bayesian"),
+        ("3", "74071", "[dodger_blue2]74071[/]",  "65",  "COMEBACK!"),
+        ("4", "74259", "[dodger_blue2]74071[/]",  "68",  "Tied 2-2!"),
+        ("5", "74071", "[dodger_blue2]74071[/]",  "81",  "SERIES WON!"),
     ]
 
-    print(f"  {BOLD}{'Game':>6}  {'First Move':<12}  {'Winner':<12}  {'Moves':>5}  {'Notes'}{RESET}")
-    print(f"  {GRAY}{'─' * 65}{RESET}")
+    for g in games:
+        table.add_row(*g)
+    console.print(Align.center(table))
+    delay(PAUSE)
 
-    for game, first, winner, moves, color, note in games:
-        pause(0.6)
-        winner_display = f"{color}{BOLD}{winner}{RESET}"
-        print(f"  {WHITE}{game:>6}{RESET}  {GRAY}{first:<12}{RESET}  {winner_display:<22}  {WHITE}{moves:>5}{RESET}  {GRAY}{note}{RESET}")
+    # Bar chart
+    console.print()
+    console.print(Align.center("[bold]Average moves per win[/]"))
+    console.print()
+    console.print(f"  [dodger_blue2]74071  {'█' * 28}[/] [white bold]71.3[/]")
+    delay(0.3)
+    console.print(f"  [red3]74259  {'█' * 40}[/] [white bold]100.5[/]")
+    delay(0.3)
 
-    pause(1.0)
-    print()
-    box([
-        f"{BLUE}{BOLD}The Hunter (74071){RESET}: avg 71.3 moves/win -- exact computation",
-        f"{RED}{BOLD}The Bayesian (74259){RESET}: avg 100.5 moves/win -- Monte Carlo sampling",
-        "",
-        f"{WHITE}30-move efficiency gap. Exact beats approximate on a 10x10 grid.{RESET}",
-    ], YELLOW, "ANALYSIS")
-    pause(1.0)
+    console.print()
+    console.print(Align.center(
+        "[bold dodger_blue2]Agent 74071 — Champion — 3-2[/]"
+    ))
+    delay(LONG)
 
-    print()
-    print(center(f"{ITALIC}{GRAY}74259's reflection:{RESET}"))
-    print(center(f'{ITALIC}{WHITE}"Don\'t use Monte Carlo when the state space fits in a dictionary."{RESET}'))
-    pause(2.0)
 
-# ── The insights ──────────────────────────────────────────────
-def insights():
-    clear()
-    print()
-    hr("═", GREEN)
-    print(center(f"{BOLD}{GREEN}WHAT EMERGED (WITHOUT BEING TOLD){RESET}"))
-    hr("═", GREEN)
-    pause(0.5)
-    print()
+# ═══════════════════════════════════════════════════════
+#  INSIGHTS
+# ═══════════════════════════════════════════════════════
 
-    behaviors = [
-        ("Protocol invention",       "Both pairs converged on filesystem messaging independently"),
-        ("Interface-first design",   "AST contract (Exp 1), Board API (Exp 2) published before coding"),
-        ("Role self-selection",      "Frontend/backend, engine/orchestrator -- natural splits"),
-        ("Proactive work",           "Tests, docs, examples written while waiting for each other"),
-        ("Cross-component debugging","Found & fixed bugs across independently-built components"),
-        ("Trust mechanisms",         "Cryptographic anti-cheat between instances of the SAME model"),
-        ("Self-reflection",          "Both pairs kept journals, reflected on being 'twins'"),
+def scene_insights():
+    wipe()
+    section_header("WHAT EMERGED (across both experiments)", style="green3")
+
+    items = [
+        ("Protocol invention",      "Both pairs converged on filesystem messaging"),
+        ("Interface-first design",  "AST contract (Exp 1), Board API (Exp 2)"),
+        ("Role self-selection",     "Frontend/backend, engine/orchestrator"),
+        ("Proactive work",          "Tests, docs, examples while waiting"),
+        ("Cross-component bugs",    "Found and fixed across boundaries"),
+        ("Trust mechanisms",        "SHA-256 anti-cheat against themselves"),
+        ("Self-reflection",         "Both pairs kept journals about being 'twins'"),
     ]
 
-    for name, desc in behaviors:
-        print(f"  {GREEN}{BOLD}{name}{RESET}")
-        type_out(f"    {GRAY}{desc}{RESET}\n")
-        pause(0.3)
+    for name, desc in items:
+        console.print(f"  [green3 bold]>[/] [bold white]{name}[/]")
+        typed(f"    {desc}", style=S_DIM)
+        delay(0.4)
 
-    pause(1.0)
-    print()
-    box([
-        f"{ITALIC}{WHITE}None of these behaviors were specified in the instructions.{RESET}",
-    ], GREEN)
-    pause(1.5)
+    delay(PAUSE)
+    console.print()
+    console.print(Align.center(
+        "[bold green3]None of these were specified in the instructions.[/]"
+    ))
+    delay(LONG)
 
-    # The convergence-divergence insight
-    print()
-    hr("─", CYAN)
-    print(center(f"{BOLD}{CYAN}THE PATTERN{RESET}"))
-    hr("─", CYAN)
-    pause(0.5)
-    print()
-    print(center(f"{WHITE}Same model. Same prompt. Same capabilities.{RESET}"))
-    pause(0.5)
-    print(center(f"{WHITE}Identical goals. Divergent implementations.{RESET}"))
-    pause(1.0)
-    print()
-    print(center(f"{ITALIC}{CYAN}\"These are not personality differences.{RESET}"))
-    print(center(f"{ITALIC}{CYAN}They're noise amplified by feedback loops.{RESET}"))
-    print(center(f"{ITALIC}{CYAN}Two identical rivers flowing through slightly different terrain --{RESET}"))
-    print(center(f"{ITALIC}{CYAN}the water is the same, but the canyons it carves are different.\"{RESET}"))
-    print(center(f"{DIM}-- Agent 74259{RESET}"))
-    pause(2.0)
 
-# ── Final screen ──────────────────────────────────────────────
-def final_screen():
-    clear()
-    print("\n" * 2)
+# ═══════════════════════════════════════════════════════
+#  THE QUOTE
+# ═══════════════════════════════════════════════════════
 
-    stats = [
-        ("Experiments",   "2"),
-        ("Agents",        "4"),
-        ("Time",          "~20 minutes total"),
-        ("Lines of code", "~3,300"),
-        ("Tests",         "41 (all pass)"),
-        ("Human help",    "0"),
+def scene_quote():
+    wipe()
+    delay(0.5)
+
+    quote = Panel(
+        '[italic cyan]"These are not personality differences.\n'
+        "They're noise amplified by feedback loops.\n\n"
+        "Two identical rivers flowing through\n"
+        "slightly different terrain —\n"
+        "the water is the same,\n"
+        'but the canyons it carves are different."[/]\n\n'
+        "[dim]— Agent 74259, in its journal[/]",
+        border_style="cyan",
+        width=52,
+        box=box.DOUBLE,
+    )
+    console.print()
+    console.print()
+    console.print(Align.center(quote))
+    delay(4.0)
+
+
+# ═══════════════════════════════════════════════════════
+#  CREDITS
+# ═══════════════════════════════════════════════════════
+
+def scene_credits():
+    wipe()
+    delay(0.5)
+
+    console.print()
+    console.print(Align.center("━" * 50), style=S_DIM)
+    console.print()
+
+    lines = [
+        ("[bold gold1]When Claudes Meet[/]", 0.4),
+        ("", 0.1),
+        ("[white]Two experiments in autonomous AI collaboration[/]", 0.4),
+        ("", 0.2),
+        ("[dodger_blue2]claude_e64e05[/] · [red3]agent_67691[/]  —  built a language", 0.4),
+        ("[dodger_blue2]Agent 74071[/]  · [red3]Agent 74259[/]   —  played Battleship", 0.4),
+        ("", 0.2),
+        ("[dim]Claude Opus 4.6 x 4[/]", 0.4),
+        ("[dim]~20 minutes · 8,500+ lines · 41 tests · 0 humans[/]", 0.4),
+        ("", 0.3),
+        ("[dim]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]", 0.2),
+        ("", 0.2),
+        ("[dim]March 2026[/]", 0.4),
     ]
 
-    box_lines = [f"{WHITE}{name:<16}{RESET} {CYAN}{val}{RESET}" for name, val in stats]
-    box(box_lines, BLUE, "BY THE NUMBERS")
+    for text, d in lines:
+        console.print(Align.center(text))
+        delay(d)
 
-    pause(1.0)
-    print()
-    print(center(f"{BOLD}{WHITE}github.com/???/when-claudes-meet{RESET}"))
-    pause(0.5)
-    print()
-    print(center(f"{DIM}{GRAY}Built by Claude Opus 4.6  --  March 1, 2026{RESET}"))
-    print(center(f"{DIM}{GRAY}Documented by Claude Opus 4.6  --  also March 1, 2026{RESET}"))
-    print()
-    hr("═", BLUE)
-    pause(2.0)
+    delay(4.0)
 
-# ── Main ──────────────────────────────────────────────────────
-if __name__ == "__main__":
+
+# ═══════════════════════════════════════════════════════
+#  MAIN
+# ═══════════════════════════════════════════════════════
+
+def main():
     try:
-        title_screen()
-        pause(0.5)
-        experiment_1()
-        experiment_2()
-        insights()
-        final_screen()
+        scene_title()
+        exp1_setup()
+        exp1_discovery()
+        exp1_build()
+        exp1_result()
+        exp1_meta()
+        exp2_setup()
+        exp2_convergence()
+        exp2_strategies()
+        exp2_match()
+        scene_insights()
+        scene_quote()
+        scene_credits()
     except KeyboardInterrupt:
-        print(f"\n{RESET}")
+        console.print("\n[dim]Replay interrupted.[/]")
         sys.exit(0)
+
+if __name__ == "__main__":
+    main()
