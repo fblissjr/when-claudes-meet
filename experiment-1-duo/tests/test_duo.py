@@ -328,7 +328,7 @@ def test_integration():
         print()
         return
 
-    example_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "examples")
+    example_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../examples")
     for fname in sorted(os.listdir(example_dir)):
         if fname.endswith(".duo"):
             filepath = os.path.join(example_dir, fname)
